@@ -6,9 +6,14 @@ const {
   attachCookiesToResponse,
   createTokenUser,
   sendVerificationEmail,
+  sendResetPasswordEmail,
+  createJWT,
+  isTokenValid,
 } = require("../utils");
 const crypto = require("crypto");
 const sendEmail = require("../utils/sendEmail");
+const { log } = require("console");
+const bcrypt = require("bcryptjs/dist/bcrypt");
 
 const origin = 'http://localhost:5000'
 
@@ -142,10 +147,84 @@ const sendTestEmail = async (req, res) => {
   res.status(StatusCodes.OK).json({ info });
 };
 
+const forgottenPasswordRecovery = async (req, res) => {
+  const {email} = req.body
+  if (!email) {
+    throw new CustomError.BadRequestError('Please provide email')
+  }
+  
+  const user = await User.findOne({email})
+  
+  if (!user) {
+    throw new CustomError.BadRequestError('No user with this email address. Please register.')
+  }
+  // create and upload the resetPasswordToken in the user object. Save.
+  const name = user.name
+
+  const resetPasswordToken = createJWT({email})
+  
+  user.resetPasswordToken = resetPasswordToken
+  await user.save()
+  
+  // send email with reset password link with the token.
+  sendResetPasswordEmail({name, email, resetPasswordToken, origin})
+
+  res.status(StatusCodes.OK).json({msg: 'email with reset link sent'})
+}
+
+const directToResetPassword = async (req, res) => {
+  const {email, token: resetPasswordToken} = req.query
+  console.log(email, resetPasswordToken);
+  
+  if (!email || !resetPasswordToken) {
+    throw new CustomError.BadRequestError('Invalid link. Request another rest password link.')
+  }
+  const user = await User.findOne({email})
+  
+  if (!user) {
+    throw new CustomError.BadRequestError(`User with email: ${email} does not exist. Register first.`)
+  }
+  
+  if (!user.resetPasswordToken === resetPasswordToken || !user.resetPasswordToken) {
+    throw new CustomError.BadRequestError('Invalid reset token. Request another rest password link.')
+  }
+
+  user.resetPasswordToken = ''
+
+  await user.save()
+
+  res.status(StatusCodes.OK).json(`Redirecting to: reset your password`)
+}
+
+const resetPassword = async (req, res) => {
+  const {newPassword, resetPasswordToken} = req.body
+
+  const payload = isTokenValid(resetPasswordToken)
+
+  const user = await User.findOne({email: payload.email})
+
+  const isSamePassword = await user.comparePassword(newPassword, user.password)
+
+  if (isSamePassword) {
+    throw new CustomError.BadRequestError('Your new password cannot be the same as the previous password')
+  }
+
+  // the model hashes the password automatically 
+  user.password = newPassword
+
+  await user.save()
+
+  res.status(StatusCodes.OK).json({msg: 'Password successfully changed'})
+
+}
+
 module.exports = {
   register,
   login,
   logout,
   verifyEmail,
   sendTestEmail,
+  forgottenPasswordRecovery,
+  directToResetPassword,
+  resetPassword
 };
