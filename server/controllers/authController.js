@@ -34,7 +34,6 @@ const register = async (req, res) => {
   });
 
   //send verification token back only while testing postman!!!
-  console.log({email})
   await sendVerificationEmail(name, email, verificationToken, origin);
   res
     .status(StatusCodes.CREATED)
@@ -54,7 +53,6 @@ const verifyEmail = async (req, res) => {
   }
 
   const user = await User.findOne({ email });
-  console.log(user);
 
   if (user.verificationToken !== verificationToken) {
     throw new CustomError.UnauthenticatedError("Verification failed");
@@ -87,11 +85,28 @@ const login = async (req, res) => {
   if (!user.isVerified) {
     throw new CustomError.UnauthenticatedError("Please verify your email");
   }
+
+  //returns {name, userId, role} from user
   const tokenUser = createTokenUser(user);
   // create refresh token
   let refreshToken = '';
   //check for existing token
+  const existingToken = await Token.findOne({user:user._id})
 
+
+  if (existingToken) {
+    const {isValid} = existingToken
+    // for hardcoded banhammers in MongoDb
+    if (!isValid) {
+      throw new CustomError.UnauthenticatedError('Invalid credentials')
+    }
+    refreshToken = existingToken.refreshToken
+    attachCookiesToResponse({ res, user: tokenUser });
+  // respond to avoid reading further code
+    res.status(StatusCodes.OK).json({ user: tokenUser, refreshToken });
+  }
+
+  //create and attach a refreshToken if none exists in the db
   refreshToken = crypto.randomBytes(40).toString('hex')
   const userAgent = req.headers['user-agent']
   const ip = req.ip
@@ -104,9 +119,16 @@ const login = async (req, res) => {
 };
 
 const logout = async (req, res) => {
-  res.cookie("token", "logout", {
+
+  await Token.findOneAndDelete({user: req.user.userId})
+
+  res.cookie("accessToken", "logout", {
     httpOnly: true,
-    expires: new Date(Date.now() + 1000),
+    expires: new Date(Date.now()),
+  });
+  res.cookie("refreshToken", "logout", {
+    httpOnly: true,
+    expires: new Date(Date.now()),
   });
   res.status(StatusCodes.OK).json({ msg: "user logged out!" });
 };
