@@ -8,7 +8,6 @@ const {
   verifyEmail,
   sendTestEmail,
   forgottenPasswordRecovery,
-  directToResetPassword,
   resetPassword,
 } = require("../controllers/authController");
 
@@ -17,8 +16,8 @@ router.route("/login").post(login);
 router.route("/logout").delete(authenticateUser, logout);
 router.route("/verify-email").patch(verifyEmail);
 router.route("/sendTestEmail").patch(sendTestEmail);
-router.route("/send-reset-email").patch(forgottenPasswordRecovery);
-router.route("/reset-password/").patch(resetPassword)
-router.route("/reset-password/*").patch(directToResetPassword)
+router.route("/reset-password").post(resetPassword)
+router.route("/forgot-password").post(forgottenPasswordRecovery)
+
 
 module.exports = router;

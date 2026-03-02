@@ -15,11 +15,10 @@ const sendEmail = require("../utils/sendEmail");
 const { log } = require("console");
 const bcrypt = require("bcryptjs/dist/bcrypt");
 
-const origin = 'http://localhost:5000'
+const origin = "http://localhost:5000";
 
 const register = async (req, res) => {
   const { email, name, password } = req.body;
-  
 
   const emailAlreadyExists = await User.findOne({ email });
   if (emailAlreadyExists) {
@@ -40,12 +39,10 @@ const register = async (req, res) => {
 
   //send verification token back only while testing postman!!!
   await sendVerificationEmail(name, email, verificationToken, origin);
-  res
-    .status(StatusCodes.CREATED)
-    .json({
-      msg: "Please check your email to verify your account",
-      user: user.verificationToken,
-    });
+  res.status(StatusCodes.CREATED).json({
+    msg: "Please check your email to verify your account",
+    user: user.verificationToken,
+  });
 };
 
 const verifyEmail = async (req, res) => {
@@ -94,38 +91,36 @@ const login = async (req, res) => {
   //returns {name, userId, role} from user
   const tokenUser = createTokenUser(user);
   // create refresh token
-  let refreshToken = '';
+  let refreshToken = "";
   //check for existing token
-  const existingToken = await Token.findOne({user:user._id})
-
+  const existingToken = await Token.findOne({ user: user._id });
 
   if (existingToken) {
-    const {isValid} = existingToken
+    const { isValid } = existingToken;
     // for hardcoded banhammers in MongoDb
     if (!isValid) {
-      throw new CustomError.UnauthenticatedError('Invalid credentials')
+      throw new CustomError.UnauthenticatedError("Invalid credentials");
     }
-    refreshToken = existingToken.refreshToken
+    refreshToken = existingToken.refreshToken;
     attachCookiesToResponse({ res, user: tokenUser });
-  // respond to avoid reading further code
+    // respond to avoid reading further code
     res.status(StatusCodes.OK).json({ user: tokenUser, refreshToken });
   }
 
   //create and attach a refreshToken if none exists in the db
-  refreshToken = crypto.randomBytes(40).toString('hex')
-  const userAgent = req.headers['user-agent']
-  const ip = req.ip
-  const userToken = {refreshToken, ip, userAgent, user:user._id }
+  refreshToken = crypto.randomBytes(40).toString("hex");
+  const userAgent = req.headers["user-agent"];
+  const ip = req.ip;
+  const userToken = { refreshToken, ip, userAgent, user: user._id };
 
   attachCookiesToResponse({ res, user: tokenUser });
 
-  await Token.create(userToken)
+  await Token.create(userToken);
   res.status(StatusCodes.OK).json({ user: tokenUser, refreshToken });
 };
 
 const logout = async (req, res) => {
-
-  await Token.findOneAndDelete({user: req.user.userId})
+  await Token.findOneAndDelete({ user: req.user.userId });
 
   res.cookie("accessToken", "logout", {
     httpOnly: true,
@@ -148,75 +143,85 @@ const sendTestEmail = async (req, res) => {
 };
 
 const forgottenPasswordRecovery = async (req, res) => {
-  const {email} = req.body
+  const { email } = req.body;
   if (!email) {
-    throw new CustomError.BadRequestError('Please provide email')
+    throw new CustomError.BadRequestError("Please provide email");
   }
-  
-  const user = await User.findOne({email})
-  
-  if (!user) {
-    throw new CustomError.BadRequestError('No user with this email address. Please register.')
-  }
+
+  const user = await User.findOne({ email });
+
+  // if (!user) {
+  //   throw new CustomError.BadRequestError('No user with this email address. Please register.')
+  // }
   // create and upload the resetPasswordToken in the user object. Save.
-  const name = user.name
 
-  const resetPasswordToken = createJWT({email})
-  
-  user.resetPasswordToken = resetPasswordToken
-  await user.save()
-  
-  // send email with reset password link with the token.
-  sendResetPasswordEmail({name, email, resetPasswordToken, origin})
+  if (user) {
+    const resetPasswordToken = createJWT({ payload: email });
 
-  res.status(StatusCodes.OK).json({msg: 'email with reset link sent'})
-}
+    const tenMinutes = 1000 * 60 * 10;
+    const passwordTokenExpirationDate = new Date(Date.now() + tenMinutes);
 
-const directToResetPassword = async (req, res) => {
-  const {email, token: resetPasswordToken} = req.query
-  console.log(email, resetPasswordToken);
-  
-  if (!email || !resetPasswordToken) {
-    throw new CustomError.BadRequestError('Invalid link. Request another rest password link.')
+    user.resetPasswordToken = resetPasswordToken;
+    user.passwordTokenExpirationDate = passwordTokenExpirationDate;
+    await user.save();
+
+    // send email with reset password link with the token.
+    await sendResetPasswordEmail({
+      user: user.name,
+      email,
+      resetPasswordToken,
+      origin,
+    });
   }
-  const user = await User.findOne({email})
-  
-  if (!user) {
-    throw new CustomError.BadRequestError(`User with email: ${email} does not exist. Register first.`)
-  }
-  
-  if (!user.resetPasswordToken === resetPasswordToken || !user.resetPasswordToken) {
-    throw new CustomError.BadRequestError('Invalid reset token. Request another rest password link.')
-  }
-
-  user.resetPasswordToken = ''
-
-  await user.save()
-
-  res.status(StatusCodes.OK).json(`Redirecting to: reset your password`)
-}
+  //the response is out of the condition statement not to reveal if email exists
+  res.status(StatusCodes.OK).json({ msg: "email with reset link sent" });
+};
 
 const resetPassword = async (req, res) => {
-  const {newPassword, resetPasswordToken} = req.body
+  const { email, resetPasswordToken, newPassword } = req.body;
+  console.log(email, resetPasswordToken);
 
-  const payload = isTokenValid(resetPasswordToken)
-
-  const user = await User.findOne({email: payload.email})
-
-  const isSamePassword = await user.comparePassword(newPassword, user.password)
-
-  if (isSamePassword) {
-    throw new CustomError.BadRequestError('Your new password cannot be the same as the previous password')
+  if (!email || !resetPasswordToken || !newPassword) {
+    throw new CustomError.BadRequestError(
+      "Invalid request. Provide valid email and password.",
+    );
   }
+  const user = await User.findOne({ email });
 
-  // the model hashes the password automatically 
-  user.password = newPassword
+  // condition 1: the user exists
+  if (user) {
+    const currentDate = Date.now();
+    
+    // condition 2: the resetPasswordToken is valid
+    if (
+      user.passwordTokenExpirationDate > currentDate &&
+      user.resetPasswordToken === resetPasswordToken
+    ) {
+      
+    // condition 3: the new password is different from the old one
 
-  await user.save()
+      const isSamePassword = await user.comparePassword(newPassword, user.password);
 
-  res.status(StatusCodes.OK).json({msg: 'Password successfully changed'})
+       if (isSamePassword) {
+        throw new CustomError.BadRequestError(
+          "Your new password cannot be the same as the previous password",
+    );}
 
-}
+      user.password = newPassword;
+      user.resetPasswordToken = null;
+      user.passwordTokenExpirationDate = null;
+      await user.save();
+
+      res.status(StatusCodes.OK).json(`Password changed. `);
+    }
+
+    throw new CustomError.UnauthorizedError(
+      "Link expired. Request another password reset email",
+    );
+  }
+};
+
+
 
 module.exports = {
   register,
@@ -225,6 +230,6 @@ module.exports = {
   verifyEmail,
   sendTestEmail,
   forgottenPasswordRecovery,
-  directToResetPassword,
-  resetPassword
+  resetPassword,
+  resetPassword,
 };
