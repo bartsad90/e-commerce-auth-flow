@@ -142,7 +142,8 @@ const sendTestEmail = async (req, res) => {
   res.status(StatusCodes.OK).json({ info });
 };
 
-const forgottenPasswordRecovery = async (req, res) => {
+
+const requestResetPasswordLink = async (req, res) => {
   const { email } = req.body;
   if (!email) {
     throw new CustomError.BadRequestError("Please provide email");
@@ -229,7 +230,7 @@ module.exports = {
   logout,
   verifyEmail,
   sendTestEmail,
-  forgottenPasswordRecovery,
+  requestResetPasswordLink,
   resetPassword,
   resetPassword,
 };

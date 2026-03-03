@@ -7,7 +7,7 @@ const {
   logout,
   verifyEmail,
   sendTestEmail,
-  forgottenPasswordRecovery,
+  requestResetPasswordLink,
   resetPassword,
 } = require("../controllers/authController");
 
@@ -17,7 +17,7 @@ router.route("/logout").delete(authenticateUser, logout);
 router.route("/verify-email").patch(verifyEmail);
 router.route("/sendTestEmail").patch(sendTestEmail);
 router.route("/reset-password").post(resetPassword)
-router.route("/forgot-password").post(forgottenPasswordRecovery)
+router.route("/forgot-password").post(requestResetPasswordLink)
 
 
 module.exports = router;
